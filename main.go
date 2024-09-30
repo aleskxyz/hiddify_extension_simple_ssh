@@ -1,7 +1,7 @@
 package main
 
 import (
-	_ "github.com/author_name/project_urlname/hiddify_extension"
+	_ "github.com/aleskxyz/hiddify_extension_simple_ssh/hiddify_extension"
 
 	"github.com/hiddify/hiddify-core/cmd"
 )

@@ -7,7 +7,7 @@ toolchain go1.22.3
 require (
 	github.com/fatih/color v1.16.0
 	github.com/hiddify/hiddify-core v1.9.1-0.20240929205909-e8e7efc513bb
-	github.com/sagernet/sing-box v1.8.9
+	golang.org/x/crypto v0.26.0
 )
 
 require (
@@ -85,6 +85,7 @@ require (
 	github.com/sagernet/quic-go v0.47.0-beta.2 // indirect
 	github.com/sagernet/reality v0.0.0-20230406110435-ee17307e7691 // indirect
 	github.com/sagernet/sing v0.4.3 // indirect
+	github.com/sagernet/sing-box v1.8.9 // indirect
 	github.com/sagernet/sing-dns v0.2.3 // indirect
 	github.com/sagernet/sing-mux v0.2.0 // indirect
 	github.com/sagernet/sing-quic v0.2.2 // indirect
@@ -111,7 +112,6 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba // indirect
-	golang.org/x/crypto v0.26.0 // indirect
 	golang.org/x/exp v0.0.0-20240531132922-fd00a4e0eefc // indirect
 	golang.org/x/mod v0.18.0 // indirect
 	golang.org/x/net v0.28.0 // indirect

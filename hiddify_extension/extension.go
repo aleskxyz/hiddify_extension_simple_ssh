@@ -3,185 +3,233 @@ package hiddify_extension
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"time"
-
-	"github.com/hiddify/hiddify-core/config"
-	"github.com/sagernet/sing-box/option"
 
 	"github.com/fatih/color"
 	ex "github.com/hiddify/hiddify-core/extension"
 	ui "github.com/hiddify/hiddify-core/extension/ui"
+	"golang.org/x/crypto/ssh"
 )
 
-// Color definitions for console output
+// Console color settings
 var (
 	red    = color.New(color.FgRed).Add(color.Bold)
 	green  = color.New(color.FgGreen).Add(color.Underline)
 	yellow = color.New(color.FgYellow)
 )
 
-// HiddifyExtensionSimpleSshData holds the data specific to HiddifyExtensionSimpleSsh
+// Extension-specific data struct
 type HiddifyExtensionSimpleSshData struct {
-	Count int `json:"count"` // Number of counts for the extension
+	IP       string `json:"ip"`       // SSH server IP
+	Port     string `json:"port"`     // SSH port
+	Username string `json:"username"` // SSH username
+	Password string `json:"password"` // SSH password
+	Command  string `json:"command"`  // Command to execute on SSH server
 }
 
-// Field name constants for easy reference, use similar name to the json key
+// Form field keys
 const (
-	CountKey = "count"
+	IPKey       = "ip"
+	PortKey     = "port"
+	UsernameKey = "username"
+	PasswordKey = "password"
+	CommandKey  = "command"
 )
 
-// HiddifyExtensionSimpleSsh represents the core functionality of the extension
+// HiddifyExtensionSimpleSsh represents the extension's core functionality
 type HiddifyExtensionSimpleSsh struct {
-	ex.Base[HiddifyExtensionSimpleSshData]                    // Embedding base extension functionality
-	cancel                        context.CancelFunc // Function to cancel background tasks
-	console                       string             // Stores console output
+	ex.Base[HiddifyExtensionSimpleSshData]
+	console string             // Stores console output
+	cancel  context.CancelFunc // Function to cancel background tasks
 }
 
-// GetUI returns the UI form for the extension
+// GetUI provides the form for user input
 func (e *HiddifyExtensionSimpleSsh) GetUI() ui.Form {
-	// Create a form depending on whether there is a background task or not
-	if e.cancel != nil {
-		return ui.Form{
-			Title:       "hiddify_extension_simple_ssh",
-			Description: "Awesome Extension hiddify_extension_simple_ssh created by aleskxyz",
-			Buttons:     []string{ui.Button_Cancel}, // Cancel button only when task is ongoing
-			Fields: []ui.FormField{
-				{
-					Type:  ui.FieldConsole,
-					Key:   "console",
-					Label: "Console",
-					Value: e.console, // Display console output
-					Lines: 20,
-				},
-			},
-		}
-	}
-	// Inital page
+	// UI form creation
 	return ui.Form{
-		Title:       "hiddify_extension_simple_ssh",
-		Description: "Awesome Extension hiddify_extension_simple_ssh created by aleskxyz",
+		Title:       "Simple SSH Command Executor",
+		Description: "Execute a command on a remote SSH server",
 		Buttons:     []string{ui.Button_Cancel, ui.Button_Submit},
 		Fields: []ui.FormField{
 			{
 				Type:        ui.FieldInput,
-				Key:         CountKey,
-				Label:       "Count",
-				Placeholder: "This will be the count",
+				Key:         IPKey,
+				Label:       "IP Address",
+				Placeholder: "Enter the SSH server IP address",
 				Required:    true,
-				Value:       fmt.Sprintf("%d", e.Base.Data.Count), // Default value from stored data
-				Validator:   ui.ValidatorDigitsOnly,               // Only allow digits
+				Value:       e.Base.Data.IP,
+			},
+			{
+				Type:        ui.FieldInput,
+				Key:         PortKey,
+				Label:       "Port",
+				Placeholder: "Enter the SSH server port",
+				Required:    true,
+				Value:       e.Base.Data.Port,
+				Validator:   ui.ValidatorDigitsOnly, // Only allow digits
+			},
+			{
+				Type:        ui.FieldInput,
+				Key:         UsernameKey,
+				Label:       "Username",
+				Placeholder: "Enter SSH username",
+				Required:    true,
+				Value:       e.Base.Data.Username,
+			},
+			{
+				Type:        ui.FieldPassword, // Hide password input
+				Key:         PasswordKey,
+				Label:       "Password",
+				Placeholder: "Enter SSH password",
+				Required:    true,
+				Value:       e.Base.Data.Password,
+			},
+			{
+				Type:        ui.FieldInput,
+				Key:         CommandKey,
+				Label:       "Command",
+				Placeholder: "Enter command to execute",
+				Required:    true,
+				Value:       e.Base.Data.Command,
 			},
 			{
 				Type:  ui.FieldConsole,
 				Key:   "console",
-				Label: "Console",
-				Value: e.console, // Display current console output
+				Label: "Console Output",
+				Value: e.console, // Display console output
 				Lines: 20,
 			},
 		},
 	}
 }
 
-// setFormData validates and sets the form data from input
+// setFormData validates and sets form data
 func (e *HiddifyExtensionSimpleSsh) setFormData(data map[string]string) error {
-	// Check if CountKey exists in the provided data
-	if val, ok := data[CountKey]; ok {
-		if intValue, err := strconv.Atoi(val); err == nil {
-			// Validate that the count is greater than 5
-			if intValue < 5 {
-				return fmt.Errorf("please use a number greater than 5")
-			} else {
-				e.Base.Data.Count = intValue // Set valid count value
-			}
-		} else {
-			return err // Return parsing error
-		}
+	// Validate and store form inputs
+	if val, ok := data[IPKey]; ok {
+		e.Base.Data.IP = val
 	}
-	return nil // Return nil if data is set successfully
+	if val, ok := data[PortKey]; ok {
+		e.Base.Data.Port = val
+	}
+	if val, ok := data[UsernameKey]; ok {
+		e.Base.Data.Username = val
+	}
+	if val, ok := data[PasswordKey]; ok {
+		e.Base.Data.Password = val
+	}
+	if val, ok := data[CommandKey]; ok {
+		e.Base.Data.Command = val
+	}
+	return nil
 }
 
-// backgroundTask runs a task in the background, updating the console at intervals
+// backgroundTask connects to the SSH server and executes the command
 func (e *HiddifyExtensionSimpleSsh) backgroundTask(ctx context.Context) {
-	for count := 1; count <= e.Base.Data.Count; count++ {
-		select {
-		case <-ctx.Done(): // If context is done (cancel is pressed), exit the task
-			e.cancel = nil
-			e.addAndUpdateConsole(red.Sprint("Background Task Canceled")) // Notify cancellation
-			return
-		case <-time.After(1 * time.Second): // Wait for a second before the next iteration
-			e.addAndUpdateConsole(red.Sprint(count), yellow.Sprint(" Background task ", count, " working..."))
-		}
+	// Prepare SSH connection configuration
+	config := &ssh.ClientConfig{
+		User: e.Base.Data.Username,
+		Auth: []ssh.AuthMethod{
+			ssh.Password(e.Base.Data.Password),
+		},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // Skip host key verification (for simplicity)
+		Timeout:         5 * time.Second,
 	}
-	e.cancel = nil
-	e.addAndUpdateConsole(green.Sprint("Background Task Finished Successfully")) // Task completion message
+
+	// Connect to the SSH server
+	address := fmt.Sprintf("%s:%s", e.Base.Data.IP, e.Base.Data.Port)
+	client, err := ssh.Dial("tcp", address, config)
+	if err != nil {
+		e.addAndUpdateConsole(red.Sprint("Failed to connect: "), err.Error())
+		return
+	}
+	defer client.Close()
+
+	// Create a session
+	session, err := client.NewSession()
+	if err != nil {
+		e.addAndUpdateConsole(red.Sprint("Failed to create SSH session: "), err.Error())
+		return
+	}
+	defer session.Close()
+
+	// Execute the command and get output
+	output, err := session.CombinedOutput(e.Base.Data.Command)
+	if err != nil {
+		e.addAndUpdateConsole(red.Sprint("Command execution failed: "), err.Error())
+		return
+	}
+
+	// Print the output
+	e.addAndUpdateConsole(green.Sprint("Command executed successfully:\n"), string(output))
 }
 
 // addAndUpdateConsole adds messages to the console and updates the UI
 func (e *HiddifyExtensionSimpleSsh) addAndUpdateConsole(message ...any) {
-	e.console = fmt.Sprintln(message...) + e.console // Prepend new messages to the console output
-	e.UpdateUI(e.GetUI())                            // Update the UI with the new console content
+	e.console = fmt.Sprintln(message...) + e.console
+	e.UpdateUI(e.GetUI()) // Refresh the UI with new console content
 }
 
-// SubmitData processes and validates form submission data
+// SubmitData processes form submission and starts the background task
 func (e *HiddifyExtensionSimpleSsh) SubmitData(data map[string]string) error {
 	// Validate and set the form data
 	err := e.setFormData(data)
 	if err != nil {
-		e.ShowMessage("Invalid data", err.Error()) // Show error message if data is invalid
-		return err                                 // Return the error
+		e.ShowMessage("Invalid data", err.Error())
+		return err
 	}
+
 	// Cancel any ongoing background task
 	if e.cancel != nil {
 		e.cancel()
 	}
-	ctx, cancel := context.WithCancel(context.Background()) // Create a new context for the task
-	e.cancel = cancel                                       // Store the cancel function
+	ctx, cancel := context.WithCancel(context.Background())
+	e.cancel = cancel
 
-	go e.backgroundTask(ctx) // Run the background task concurrently
+	// Start SSH command execution in the background
+	go e.backgroundTask(ctx)
 
-	return nil // Return nil if submission is successful
+	return nil
 }
 
-// Cancel stops the ongoing background task if it exists
+// Cancel stops the background task
 func (e *HiddifyExtensionSimpleSsh) Cancel() error {
 	if e.cancel != nil {
-		e.cancel()     // Cancel the task
-		e.cancel = nil // Clear the cancel function
+		e.cancel()     // Cancel background task
+		e.cancel = nil // Clear cancel function
 	}
-	return nil // Return nil after cancellation
+	return nil
 }
 
 // Stop is called when the extension is closed
 func (e *HiddifyExtensionSimpleSsh) Stop() error {
-	return e.Cancel() // Simply delegate to Cancel
+	return e.Cancel()
 }
 
-// To Modify user's config before connecting, you can use this function
-func (e *HiddifyExtensionSimpleSsh) BeforeAppConnect(hiddifySettings *config.HiddifyOptions, singconfig *option.Options) error {
-	return nil
-}
-
-// NewHiddifyExtensionSimpleSsh initializes a new instance of HiddifyExtensionSimpleSsh with default values
+// NewHiddifyExtensionSimpleSsh initializes a new instance of HiddifyExtensionSimpleSsh
 func NewHiddifyExtensionSimpleSsh() ex.Extension {
 	return &HiddifyExtensionSimpleSsh{
-		Base: ex.Base[HiddifyExtensionSimpleSshData]{
-			Data: HiddifyExtensionSimpleSshData{ // Set default data
-				Count: 4, // Default count value
+		Base: ex.Base[HiddifyExtensionSimpleSshData]{ // Set default values
+			Data: HiddifyExtensionSimpleSshData{
+				IP:       "127.0.0.1",
+				Port:     "22",
+				Username: "",
+				Password: "",
+				Command:  "echo 'Hello, World!'",
 			},
 		},
-		console: yellow.Sprint("Welcome to ") + green.Sprint("hiddify_extension_simple_ssh\n"), // Default message
+		console: yellow.Sprint("Ready to execute commands over SSH\n"),
 	}
 }
 
-// init registers the extension with the provided metadata
+// init registers the extension with metadata
 func init() {
 	ex.RegisterExtension(
 		ex.ExtensionFactory{
-			Id:          "github.com/aleskxyz/hiddify_extension_simple_ssh/hiddify_extension", // Package identifier
-			Title:       "hiddify_extension_simple_ssh",                                                         // Display title of the extension
-			Description: "Awesome Extension hiddify_extension_simple_ssh created by aleskxyz",                                                     // Brief description of the extension
-			Builder:     NewHiddifyExtensionSimpleSsh,                                                       // Function to create a new instance
+			Id:          "github.com/aleskxyz/hiddify_extension_simple_ssh/hiddify_extension",
+			Title:       "Simple SSH",
+			Description: "An extension to execute commands on a remote SSH server",
+			Builder:     NewHiddifyExtensionSimpleSsh,
 		},
 	)
 }
